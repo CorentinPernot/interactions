@@ -1,6 +1,5 @@
 import numpy as np
 
-
 """agent class"""
 
 
@@ -16,6 +15,11 @@ class Agent:
         self.Pi_hist = []
         self.id = id
         self._Pi = None
+
+        self.fights_won = 0
+        self.fights_lost = 0
+        self.Xi_hist = []
+        self._Xi = None
 
     @property
     def position(self):
@@ -33,6 +37,15 @@ class Agent:
     def Pi(self, value):
         self._Pi = value
         self.Pi_hist.append(value)
+
+    @property
+    def Xi(self):
+        return self._Xi
+
+    @Xi.setter
+    def Xi(self, value):
+        self._Xi = value
+        self.Xi_hist.append(value)
 
     def add_unchanged_step(self):
         self.fitness_hist.append(self.fitness)
