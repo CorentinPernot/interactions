@@ -45,15 +45,17 @@ class Game:
         os.mkdir(self.path)
         os.mkdir(self.path_grid)
 
-    def play_game(self, t_max: int, save_every: int | None = None):
+    def play_game(
+        self, t_max: int, save_every: int | None = None, plot: bool = False
+    ):
         """Plays according to the diagram of the paper."""
         for t in tqdm.tqdm(range(t_max)):
             self.play_one_iter()
             # plot
             if save_every is not None and t % save_every == 0:
-                self.plot_current_situation(t)
+                self.plot_current_situation(t, plot=plot)
         # plot
-        self.plot_fitness(t_max)
+        self.plot_fitness(t_max, plot=plot)
         if save_every is not None:
             create_gif_from_images(self.path_grid, self.path_grid)
 
@@ -224,7 +226,7 @@ class Game:
     # --------------------------#
     # --------------------------#
 
-    def plot_fitness(self, t_max):
+    def plot_fitness(self, t_max, plot: bool = False):
         """Plot the fitness evolution during the game."""
         for group in self.groups:
             for idx in tqdm.tqdm(self.population[group]):
@@ -240,9 +242,11 @@ class Game:
                 plt.plot(self.population[group][idx].fitness_hist)
                 plt.grid()
             plt.savefig(os.path.join(self.path, f"fitness_{group}.png"))
+            if plot:
+                plt.show()
             plt.close()
 
-    def plot_current_situation(self, step: int):
+    def plot_current_situation(self, step: int, plot: bool):
         fig, axes = plt.subplots(1, 2, figsize=(10, 5))
         fig.suptitle(f"Time {step}")
         for idx, group in enumerate(self.groups):
@@ -265,4 +269,6 @@ class Game:
             axes[idx].set_ylim((-0.5, self.grid_size + 0.5))
 
         plt.savefig(os.path.join(self.path_grid, f"{str(step)}.png"), dpi=100)
+        if plot:
+            plt.show()
         plt.close()
