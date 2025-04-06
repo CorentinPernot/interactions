@@ -1,6 +1,7 @@
 import numpy as np
 import tqdm
 import matplotlib.pyplot as plt
+import os
 
 from matplotlib.animation import FuncAnimation
 import matplotlib.cm as cm
@@ -10,9 +11,6 @@ from src.bonabeau.agent_bonabeau import Agent
 
 
 """game class"""
-
-import numpy as np
-import tqdm
 
 
 class Game:
@@ -46,9 +44,13 @@ class Game:
         else:
             self.tracked_ids = np.random.choice(self.N, size=10, replace=False)
 
-    def play_game(self, t_max: int, Pi_update_every: int = 1):
+    def play_game(
+        self, t_max: int, save_every: int | None = None, Pi_update_every: int = 1
+    ):
         print(f"Rho : {self.rho}")
         for t in tqdm.tqdm(range(t_max)):
+            if save_every is not None and t % save_every == 0:
+                self.plot_current_situation(t)
             self.play_one_iter(update_Pi=(t % Pi_update_every == 0))
         if self.plot_final:
             self.plot_tracked_Pi()
@@ -215,3 +217,61 @@ class Game:
             anim.save(gif_name, writer="pillow", fps=1000 // interval)
         else:
             plt.show()
+
+    def plot_fitness(self, t_max, plot: bool = False):
+        """Plot the fitness evolution during the game for all agents."""
+        plt.figure(figsize=(8, 5))
+        plt.title("Fitness evolution for all agents")
+
+        for agent in tqdm.tqdm(self.population):
+            assert len(agent.fitness_hist) == t_max + 1
+            plt.plot(agent.fitness_hist, alpha=0.7)
+
+        plt.xlabel("Time")
+        plt.ylabel("Fitness")
+        plt.grid(True)
+        plt.tight_layout()
+
+        if plot:
+            plt.show()
+        else:
+            plt.savefig("fitness_all_agents.png")
+        plt.close()
+
+    def plot_current_situation(self, step: int, plot: bool = False):
+        """Scatter plot of agent positions at a given time, colored by fitness."""
+        fig, ax = plt.subplots(figsize=(6, 6))
+        fig.suptitle(f"Time {step} and $\\rho = $ {np.round(self.rho, 1)}")
+
+        positions = np.array([agent.position for agent in self.population])
+        fitnesses = np.array([agent.fitness for agent in self.population])
+
+        sc = ax.scatter(
+            positions[:, 0],
+            positions[:, 1],
+            c=fitnesses,
+            cmap="viridis",
+            vmin=np.min(fitnesses),
+            vmax=np.max(fitnesses),
+            s=80,
+            edgecolors="k",
+        )
+
+        fig.colorbar(sc, ax=ax, label="Fitness")
+        ax.set_title("All agents")
+        ax.grid(True, alpha=0.5, linestyle="--")
+        # ax.set_xticks(np.arange(self.grid_size + 1))
+        # ax.set_yticks(np.arange(self.grid_size + 1))
+        # ax.set_aspect("equal")
+        ax.set_xlim((-0.5, self.grid_size + 0.5))
+        ax.set_ylim((-0.5, self.grid_size + 0.5))
+        plt.tight_layout()
+
+        if plot:
+            plt.show()
+        else:
+            os.makedirs("plots_grid", exist_ok=True)
+            plt.savefig(
+                f"plots_grid/step_{step}_rho_{np.round(self.rho, 2)}.png", dpi=100
+            )
+        plt.close()
