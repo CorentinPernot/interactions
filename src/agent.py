@@ -36,8 +36,8 @@ class Agent:
 
         if move_axis == 0:
             dx = np.random.choice([-1, 1])
-            x = int(np.clip(x + dx, 0, L))
+            x = int(np.clip(x + dx, 0, L - 1))
         else:
             dy = np.random.choice([-1, 1])
-            y = int(np.clip(y + dy, 0, L))
+            y = int(np.clip(y + dy, 0, L - 1))
         self.position_hist.append((x, y))

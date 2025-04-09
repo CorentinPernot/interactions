@@ -15,7 +15,7 @@ class Game:
         self,
         n_a: int,
         n_b: int,
-        grid_size: int = 20,
+        grid_size: int = 25,
         eta: float = 10,
         x: float = 0.05,
     ):
@@ -26,134 +26,107 @@ class Game:
         self.grid_size = grid_size
         self.eta = eta
         self.x = x
+
         # deduced args
         self.n = n_a + n_b
         self.init_fitness = 1000 / self.n
         self.p_a = self.n_a / self.n
         self.p_b = self.n_b / self.n
+
         # to be modular in case we need to add a third group for example
         self.demography = {"A": self.n_a, "B": self.n_b}
+
         # population
         self.population = self.init_population()
+
         # min/max fitness
         self.extreme_fitness = self.init_extreme_fitness()
+
         # plot colors
         self.plot_colors = {"A": "Blues", "B": "Greens"}
+
         # saving path
-        self.path = os.path.join("output", get_time_string())
+        self.path = os.path.join("interactions", get_time_string())
         self.path_grid = os.path.join(self.path, "grid")
         os.mkdir(self.path)
         os.mkdir(self.path_grid)
 
-    def play_game(self, t_max: int, save_every: int | None = None):
+    def play_game(self, t_max: int, save_every: int | None = None, plot: bool = False):
         """Plays according to the diagram of the paper."""
         for t in tqdm.tqdm(range(t_max)):
             self.play_one_iter()
             # plot
             if save_every is not None and t % save_every == 0:
-                self.plot_current_situation(t)
+                self.plot_current_situation(t, plot=plot)
         # plot
-        self.plot_fitness(t_max)
-        if save_every is not None:
-            create_gif_from_images(self.path_grid, self.path_grid)
+        self.plot_fitness(t_max, plot=plot)
 
     def play_one_iter(self):
         """Play one iteration of the game"""
-        # move
-        moving_group, moving_agent = self.move_agent()
-        new_pos = np.array(self.population[moving_group][moving_agent].position)
-        # checking for fight
-        unmoving_group = "A" if moving_group == "B" else "B"
-        position_unmov, _ = self.get_current_info_group(unmoving_group)
-        fight_locations = np.argwhere(
-            np.abs(new_pos - position_unmov).sum(axis=1) < 1e-4
-        )
-        # fight case
-        unmoving_agent = self.check_and_do_fight(
-            moving_group, moving_agent, unmoving_group, fight_locations
-        )
         self.update_extreme_fitness()
-        protagonists = {
-            moving_group: moving_agent,
-            unmoving_group: unmoving_agent,
-        }
-        self.update_non_active_agents(protagonists)
+        # move
+        self.move_all_agents()
+        self.update_all_normalized_fitness()
+        self.check_and_do_fight()
 
-    def check_and_do_fight(
-        self, moving_group, moving_agent, unmoving_group, fight_locations
-    ):
-        """Checks if a fight should take place and do it in such a case.
-        Otherwise, the fitness is left unchanged and unmoving_agent
-        is set to None to update it as the others."""
-        # a fight is detected
-        if fight_locations.size > 0:
-            # chose a competitor among the unmoving group
-            unmoving_agent = np.random.choice(fight_locations[0])
-            self.fight(
-                moving_group, moving_agent, unmoving_group, unmoving_agent
-            )
-        # nobody on the location
-        else:
-            fit = self.population[moving_group][moving_agent].fitness
-            self.population[moving_group][moving_agent].fitness_hist.append(fit)
-            unmoving_agent = None
-        return unmoving_agent
+    def move_all_agents(self):
+        """Moves all agents (from both groups) and rebuilds the grid."""
+        self.grid = [[[] for _ in range(self.grid_size)] for _ in range(self.grid_size)]
 
-    def update_non_active_agents(self, protagonists: dict):
-        """All the agents that are not fighting are updated (left unchanged)."""
-        for group, idx_group in protagonists.items():
-            for idx_agent in self.population[group]:
-                if idx_agent != idx_group:
-                    self.population[group][idx_agent].add_unchanged_step()
+        for group in self.groups:
+            for agent in self.population[group].values():
+                agent.move_position(self.grid_size)
+                x, y = agent.position
+                self.grid[x][y].append(agent)
 
-    def move_agent(self):
-        """Chose a group, an agent and moves it.
-        Returns the info cause we need it."""
-        moving_group = np.random.choice(self.groups, p=[self.p_a, self.p_b])
-        moving_agent = np.random.choice(
-            list(self.population[moving_group].keys())
-        )
-        self.population[moving_group][moving_agent].move_position(
-            self.grid_size
-        )
-        return moving_group, moving_agent
+    def check_and_do_fight(self):
+        """For each cell, lets at most one pair of agents from opposite groups fight."""
+        for x in range(self.grid_size):
+            for y in range(self.grid_size):
+                agents = self.grid[x][y]
 
-    def fight(self, group_1, idx_1, group_2, idx_2):
-        """Compute the winning probability and exchange
-        the fitness between the fighters."""
-        prob = self.get_probability(group_1, idx_1, group_2, idx_2)
+                if len(agents) >= 2:
+                    # separe groups
+                    group_A_agents = [a for a in agents if a.group == "A"]
+                    group_B_agents = [a for a in agents if a.group == "B"]
+
+                    if group_A_agents and group_B_agents:
+                        # choose an agent to fight from each group
+                        agent_A = np.random.choice(group_A_agents)
+                        agent_B = np.random.choice(group_B_agents)
+
+                        self.fight(agent_A, agent_B)
+
+                        # every other agent remains spectator
+                        for agent in agents:
+                            if agent not in [agent_A, agent_B]:
+                                agent.fitness_hist.append(agent.fitness)
+
+                    else:  # if they are all in the same group
+                        for agent in agents:
+                            agent.fitness_hist.append(agent.fitness)
+
+                elif len(agents) == 1:
+                    agents[0].fitness_hist.append(agents[0].fitness)
+
+    def fight(self, agent_1, agent_2):
+        """Compute the winning probability and exchange fitness, using precomputed normalized values."""
+        # Convention : agent_1 est dans le groupe A
+        if agent_1.group == "B":
+            agent_1, agent_2 = agent_2, agent_1
+
+        f1, f2 = agent_1.fitness, agent_2.fitness
+        f1_norm, f2_norm = agent_1.fitness_norm, agent_2.fitness_norm
+
+        p_win = 1 / (1 + np.exp(self.eta * (f2_norm - f1_norm)))
         u = np.random.rand()
-        fit_1 = self.population[group_1][idx_1].fitness
-        fit_2 = self.population[group_2][idx_2].fitness
 
-        if ((u < prob) and (group_1 == "A")) or (
-            (u >= prob) and (group_1 == "B")
-        ):
-            self.population[group_1][idx_1].fitness_hist.append(
-                fit_1 + self.x * fit_2
-            )
-            self.population[group_2][idx_2].fitness_hist.append(
-                fit_2 - self.x * fit_2
-            )
+        if u < p_win:
+            agent_1.fitness_hist.append(f1 + self.x * f2)
+            agent_2.fitness_hist.append(f2 - self.x * f2)
         else:
-            self.population[group_1][idx_1].fitness_hist.append(
-                fit_1 - self.x * fit_1
-            )
-            self.population[group_2][idx_2].fitness_hist.append(
-                fit_2 + self.x * fit_1
-            )
-
-    def get_probability(self, group_1, idx_1, group_2, idx_2):
-        """Compute the winning probability with normalized fitness"""
-        f_hat_1 = self.get_normalized_fitness(group_1, idx_1)
-        f_hat_2 = self.get_normalized_fitness(group_2, idx_2)
-        sign = 1 if group_1 == "A" else -1
-        prob = self.probability_formula(f_hat_1, f_hat_2, sign)
-        return prob
-
-    def probability_formula(self, f_hat_1: float, f_hat_2: float, sign: int):
-        """Apply the probability formula"""
-        return (1 + np.exp(sign * self.eta * (f_hat_2 - f_hat_1))) ** (-1)
+            agent_1.fitness_hist.append(f1 - self.x * f1)
+            agent_2.fitness_hist.append(f2 + self.x * f1)
 
     def update_extreme_fitness(self):
         """Update the min/max fitness"""
@@ -168,15 +141,16 @@ class Game:
     # --------------------------#
     # --------------------------#
 
-    def get_normalized_fitness(self, group, idx):
-        """Compute normalize fitness of group[idx] agent."""
-        fitness = self.population[group][idx].fitness
-        min_fit, max_fit = (
-            self.extreme_fitness[group]["min"][-1],
-            self.extreme_fitness[group]["max"][-1],
-        )
-        eps = 1e-10
-        return (fitness - min_fit + eps) / (max_fit - min_fit + eps)
+    def update_all_normalized_fitness(self):
+        """Compute and store normalized fitness for all agents in both groups."""
+        for group in self.groups:
+            f_min = self.extreme_fitness[group]["min"][-1]
+            f_max = self.extreme_fitness[group]["max"][-1]
+            eps = 1e-10
+
+            for agent in self.population[group].values():
+                f = agent.fitness
+                agent.fitness_norm = (f - f_min + eps) / (f_max - f_min + eps)
 
     def get_current_info_group(self, group: str):
         positions = []
@@ -207,8 +181,7 @@ class Game:
         """Init the extreme fitness."""
         init_fit = self.init_fitness
         extreme_fitness = {
-            group: {"min": [init_fit], "max": [init_fit]}
-            for group in self.groups
+            group: {"min": [init_fit], "max": [init_fit]} for group in self.groups
         }
         return extreme_fitness
 
@@ -224,7 +197,7 @@ class Game:
     # --------------------------#
     # --------------------------#
 
-    def plot_fitness(self, t_max):
+    def plot_fitness(self, t_max, plot: bool = False):
         """Plot the fitness evolution during the game."""
         for group in self.groups:
             for idx in tqdm.tqdm(self.population[group]):
@@ -234,15 +207,15 @@ class Game:
             plt.figure()
             plt.title(f"Group {group}")
             for idx in tqdm.tqdm(self.population[group]):
-                assert (
-                    len(self.population[group][idx].fitness_hist) == t_max + 1
-                )
+                assert len(self.population[group][idx].fitness_hist) == t_max + 1
                 plt.plot(self.population[group][idx].fitness_hist)
                 plt.grid()
             plt.savefig(os.path.join(self.path, f"fitness_{group}.png"))
+            if plot:
+                plt.show()
             plt.close()
 
-    def plot_current_situation(self, step: int):
+    def plot_current_situation(self, step: int, plot: bool):
         fig, axes = plt.subplots(1, 2, figsize=(10, 5))
         fig.suptitle(f"Time {step}")
         for idx, group in enumerate(self.groups):
@@ -265,4 +238,6 @@ class Game:
             axes[idx].set_ylim((-0.5, self.grid_size + 0.5))
 
         plt.savefig(os.path.join(self.path_grid, f"{str(step)}.png"), dpi=100)
+        if plot:
+            plt.show()
         plt.close()
