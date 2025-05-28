@@ -30,9 +30,18 @@ Hierarchy emerges when density crosses a critical threshold
 
 ### 2. 👑 Determinism (η) controls hierarchy  
 Low η → no structure; High η → clear dominance  
-<img src="figures/stationnary_regime_eta_1.png" width="450"/>
-<img src="figures/stationnary_regime_eta_5.png" width="450"/>
-<img src="figures/stationnary_regime_eta_10.png" width="450"/>
+<table>
+  <tr>
+    <th>η = 1 (Low determinism)<br>➡️ No structure, random dynamics</th>
+    <th>η = 5 (Moderate determinism)<br>➡️ One dominant leader emerges</th>
+    <th>η = 10 (High determinism)<br>➡️ Temporary multi-leadership, then stability</th>
+  </tr>
+  <tr>
+    <td><img src="figures/stationnary_regime_eta_1.png" width="300"/></td>
+    <td><img src="figures/stationnary_regime_eta_5.png" width="300"/></td>
+    <td><img src="figures/stationnary_regime_eta_10.png" width="300"/></td>
+  </tr>
+</table>
 
 
 ---
